@@ -4,7 +4,9 @@ __lua__
 
 //vectors///////////////////////////
 function vec_len(x,y)
-   return sqrt(x*x+y*y)
+   local x = x * 0x0.1
+   local y = y * 0x0.1
+   return sqrt((x*x)+(y*y)) * 0x010
 end
 
 function vec_sub(a,b)
@@ -72,30 +74,54 @@ function col_objs(objs)
    end
    for i=1,#objs do
       local a = objs[i]
-      for j=i+1,#objs do
+      for j=1,#objs do
          local b = objs[j]
          if a.kin or b.kin then
             if circ_col(a,b) then
-               add(a.cols,b)
-               add(b.cols,a)
+               add(a.col,b)
             end
          end 
       end
    end
 end
+
 //constants////////////////////////
 grav = .05
-
+clock = 0
 objs = {}
 //methods////////////////////////////
-function ctrl_coin(obj)
+function ctrl_coin(coin)
    if btn(0) then
-      obj.x -= obj.mv
+      coin.x -= coin.mv
    end
    if btn(1) then
-      obj.x += obj.mv
+      coin.x += coin.mv
+   end
+   for v in all(coin.col) do
+      if v.catch then
+         v:catch(coin)
+         coin.active = false
+         coin.kin = false
+         coin.dead = true
+      end
    end
 end   
+
+function pig_catch(pig, obj)
+   pig.active = true
+end
+
+function pig_fire(pig)
+   if btn(3) then
+      pig.active = false
+      local ncoin = cpy(coin)
+      ncoin.x = pig.x + pig.aim_x * (pig.r + ncoin.r)
+      ncoin.y = pig.y + pig.aim_y * (pig.r + ncoin.r)
+      ncoin.dx,ncoin.dy = pig.aim_x * pig.fspeed, pig.aim_y * pig.fspeed
+      ncoin.active = true
+      add(objs,ncoin)
+   end
+end
 
 function pig_auto_strafe(obj)
 end
@@ -108,7 +134,7 @@ cam = {
 coin = {
    id = 'coin',
 	x = 0,
-   dx = 2,
+   dx = 0,
    rx = .99,
 	y = 64,
    dy = -1,
@@ -119,6 +145,7 @@ coin = {
    kin = true,
    grav = true,
    act = ctrl_coin,
+   active = true
 }
 
 pig = {
@@ -128,9 +155,16 @@ pig = {
    y = 0,
    dy = 0,
    ry = 0,
-   r = 4
+   r = 4,
+   aim_x = 1,
+   aim_y = 0,
+   act = pig_fire,
+   fspeed = 8,
+   catch = pig_catch
 }
 
+strafe_pig = cpy(pig)
+strafe_pig.update = pig_auto_strafe
 
 //drawing////////////////////////////////////// 
 function future_draw(obj, n)
@@ -148,8 +182,8 @@ function cam_coords(obj)
 end
 
 function aim_cam(cam,obj,bias)
-   local nx = (cam.x*(bias-1) + obj.x) / bias 
-   local ny = (cam.y*(bias-1) + obj.y) / bias
+   local nx = flr((cam.x*(bias-1) + obj.x) / bias)
+   local ny = flr((cam.y*(bias-1) + obj.y) / bias)
    cam.x,cam.y = nx,ny
 end
 
@@ -176,12 +210,27 @@ end
 //main////////////////////////////////
 function _init()
    objs = {}
-   add(objs,cpy(coin))
+   local coin = cpy(coin)
+   add(objs,coin)
    objs.active = objs[1]
+   local px = coin.x
+   local py = coin.y + 32
+   for i=1,7 do
+      local pg = cpy(pig)
+      pg.x = px
+      pg.y = py
+      add(objs,pg)
+      px += 64
+      py += 0
+   end
    objs.cam = cpy(cam)
+   clock = 0
 end
 
-function _update60()
+function _update()
+   clock += 1
+   col_objs(objs) 
+   objs.active:act()
    for obj in all(objs) do
       if obj.fys then
          move_obj(obj)
@@ -189,20 +238,26 @@ function _update60()
       if obj.update then
          obj:update()
       end
+      if obj.active and objs.active ~= obj then
+         objs.active.active = false
+         objs.active = obj
+      end
+      if obj.dead then
+         del(objs,obj)
+      end
    end
-   objs.active:act()
 end
 
 function _draw()
    cls()
-   local nx,ny = cam_coords(coin)
    //grid_lines(16,-nx,-ny) 
-   //camera(nx-64,ny-64)
-   //future_draw(coin,100)
-   aim_cam(objs.cam,objs.active,1)
+   camera()
+   print(flr(objs.active.x))
+   print(flr(objs.active.y))
+   aim_cam(objs.cam,objs.active,3)
    set_cam(objs.cam)
    for obj in all(objs) do
-      circfill(obj.x,obj.y,obj.r,obj.col or 7)
+      circfill(obj.x,obj.y,obj.r,obj.clr or 7)
    end
    //camera()
 end
