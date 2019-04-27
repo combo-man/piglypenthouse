@@ -31,6 +31,18 @@ function rot_vec(x,y,r)
    return nx,ny
 end
 
+//easing///////////////////////////
+function easein(t)
+   return t*t 
+end
+function easout(t)
+   return t*(2-t) 
+end
+
+function easeinout(t) 
+   return t < 0.5 and 2*t*t or -1+(4-(2*t))*t 
+end
+
 //utils////////////////////////////
 function cpy(obj)
    local n = {}
@@ -40,20 +52,9 @@ function cpy(obj)
    return n
 end
 
-//constants////////////////////////
-grav = .05
-
-coin = {
-	x = 0,
-   dx = 2,
-   rx = .99,
-	y = 64,
-   dy = -1,
-   ry = 1,
-   r = 2,
-   mv = .5,
-   grav = true
-}
+function circ_col(a,b)
+   return vec_dist(a,b) <= (a.r + b.r)
+end
 
 function move_obj(obj)
    if obj.grav then
@@ -65,11 +66,28 @@ function move_obj(obj)
    obj.dy *= obj.ry
 end
 
-function _update60()
-   move_obj(coin)
-   ctrl_coin(coin)
+function col_objs(objs)
+   for obj in all(objs) do
+      obj.col = {}
+   end
+   for i=1,#objs do
+      local a = objs[i]
+      for j=i+1,#objs do
+         local b = objs[j]
+         if a.kin or b.kin then
+            if circ_col(a,b) then
+               add(a.cols,b)
+               add(b.cols,a)
+            end
+         end 
+      end
+   end
 end
+//constants////////////////////////
+grav = .05
 
+objs = {}
+//methods////////////////////////////
 function ctrl_coin(obj)
    if btn(0) then
       obj.x -= obj.mv
@@ -79,9 +97,40 @@ function ctrl_coin(obj)
    end
 end   
 
-function c_col(a,b)
-   return vec_dist(a,b) <= (a.r + b.r)
+function pig_auto_strafe(obj)
 end
+//prototypes///////////////////////
+cam = {
+   x = 64,
+   y = 64
+}
+
+coin = {
+   id = 'coin',
+	x = 0,
+   dx = 2,
+   rx = .99,
+	y = 64,
+   dy = -1,
+   ry = 1,
+   r = 2,
+   mv = .5,
+   fys = true,
+   kin = true,
+   grav = true,
+   act = ctrl_coin,
+}
+
+pig = {
+   x = 0,
+   dx = 0,
+   rx = 1,
+   y = 0,
+   dy = 0,
+   ry = 0,
+   r = 4
+}
+
 
 //drawing////////////////////////////////////// 
 function future_draw(obj, n)
@@ -96,6 +145,16 @@ function cam_coords(obj)
    local nx = (obj.x + (obj.dx * 0))
    local ny = (obj.y + (obj.dy * 0))
    return nx,ny
+end
+
+function aim_cam(cam,obj,bias)
+   local nx = (cam.x*(bias-1) + obj.x) / bias 
+   local ny = (cam.y*(bias-1) + obj.y) / bias
+   cam.x,cam.y = nx,ny
+end
+
+function set_cam(cam)
+   camera(cam.x-64,cam.y-64)
 end
 
 function dist_lines(n)
@@ -114,16 +173,37 @@ function grid_lines(s,ox,oy)
    end
 end
 
+//main////////////////////////////////
+function _init()
+   objs = {}
+   add(objs,cpy(coin))
+   objs.active = objs[1]
+   objs.cam = cpy(cam)
+end
+
+function _update60()
+   for obj in all(objs) do
+      if obj.fys then
+         move_obj(obj)
+      end
+      if obj.update then
+         obj:update()
+      end
+   end
+   objs.active:act()
+end
+
 function _draw()
    cls()
    local nx,ny = cam_coords(coin)
    //grid_lines(16,-nx,-ny) 
    //camera(nx-64,ny-64)
    //future_draw(coin,100)
-   local cent = {x=64,y=64,r=16}
-   circ(cent.x,cent.y,cent.r,7)
-   local col = c_col(coin,cent)
-   circfill(coin.x,coin.y,coin.r,col and 7 or 9)
+   aim_cam(objs.cam,objs.active,1)
+   set_cam(objs.cam)
+   for obj in all(objs) do
+      circfill(obj.x,obj.y,obj.r,obj.col or 7)
+   end
    //camera()
 end
 __gfx__
